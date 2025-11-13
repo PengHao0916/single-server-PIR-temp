@@ -1,8 +1,0 @@
-startup --host_jvm_args=-Dhttp.proxyHost=192.168.1.34
-startup --host_jvm_args=-Dhttp.proxyPort=7890
-startup --host_jvm_args=-Dhttps.proxyHost=192.168.1.34
-startup --host_jvm_args=-Dhttps.proxyPort=7890
-startup --host_jvm_args=-Dhttp.proxyUser=ph
-startup --host_jvm_args=-Dhttp.proxyPassword=123456
-startup --host_jvm_args=-Dhttps.proxyUser=ph
-startup --host_jvm_args=-Dhttps.proxyPassword=123456

@@ -246,6 +246,19 @@ absl::StatusOr<HintlessPirResponse> Server::HandleRequest(
     *response.add_ct_records() = SerializeLweCiphertext(ct_record);
   }
 
+  // // Handle the LinPIR requests.
+  // int num_linpir_requests = request.linpir_ct_bs_size();
+  // if (num_linpir_requests != linpir_servers_.size()) {
+  //   return absl::InvalidArgumentError(
+  //       "`request` contains unexpected number of LinPir requests.");
+  // }
+  
+  // for (int k = 0; k < num_linpir_requests; ++k) {
+  //   RLWE_ASSIGN_OR_RETURN(LinPirResponse linpir_response,
+  //                         linpir_servers_[k]->HandleRequest(
+  //                             request.linpir_ct_bs(k), request.linpir_gk_bs()));
+  //   *response.add_linpir_responses() = std::move(linpir_response);
+  // }
   // Handle the LinPIR requests.
   int num_linpir_requests = request.linpir_ct_bs_size();
   if (num_linpir_requests != linpir_servers_.size()) {
@@ -254,9 +267,27 @@ absl::StatusOr<HintlessPirResponse> Server::HandleRequest(
   }
   
   for (int k = 0; k < num_linpir_requests; ++k) {
+    // 【修正】构造一个完整的 LinPirRequest 对象，以传递 client_id
+    LinPirRequest linpir_req;
+    
+    // 1. 填充 Query 部分
+    *linpir_req.mutable_ct_query_b() = request.linpir_ct_bs(k);
+    
+    // 2. 填充 Key 部分 (如果有的话)
+    // 注意：request.linpir_gk_bs() 是所有分片共享的，在第二次请求时为空，这里直接复制即可
+    if (request.linpir_gk_bs_size() > 0) {
+        *linpir_req.mutable_gk_key_bs() = request.linpir_gk_bs();
+    }
+    
+    // 3. 【关键】透传 Client ID
+    if (request.has_client_id()) {
+        linpir_req.set_client_id(request.client_id());
+    }
+
+    // 调用支持缓存的新接口 HandleRequest(const LinPirRequest&)
     RLWE_ASSIGN_OR_RETURN(LinPirResponse linpir_response,
-                          linpir_servers_[k]->HandleRequest(
-                              request.linpir_ct_bs(k), request.linpir_gk_bs()));
+                          linpir_servers_[k]->HandleRequest(linpir_req));
+                          
     *response.add_linpir_responses() = std::move(linpir_response);
   }
   return response;

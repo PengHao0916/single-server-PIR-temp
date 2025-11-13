@@ -126,6 +126,10 @@ class Client {
   std::vector<hintless_pir::LinPirResponse> linpir_response_pads_;
   // Per request state.
   ClientState state_;
+
+  std::string client_id_;
+  mutable bool is_gk_sent_ = false;
+  std::string session_linpir_sk_seed_;
 };
 
 }  // namespace hintless_simplepir

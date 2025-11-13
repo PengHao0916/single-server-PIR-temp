@@ -76,10 +76,13 @@ void BM_HintlessPirRlwe64(benchmark::State& state) {
 
   // Create a client and issue request.
   auto client = Client::Create(params, public_params).value();
-  auto request = client->GenerateRequest(1).value();
+  
+ auto request_1 = client->GenerateRequest(1).value();
+
+  auto request_2 = client->GenerateRequest(2).value();
 
   if (state.thread_index() == 0) {
-    auto response_for_size_measure = server->HandleRequest(request).value();
+    auto response_for_size_measure = server->HandleRequest(request_1).value();
     size_t lwe_response_size = 0;
     for (const auto& record : response_for_size_measure.ct_records()) {
       lwe_response_size += record.ByteSizeLong();
@@ -95,8 +98,12 @@ void BM_HintlessPirRlwe64(benchmark::State& state) {
     std::cout << "----------------------------------------\n";
     std::cout << "Hint Size (Public Params): "
               << public_params.ByteSizeLong() / 1024.0 << " KB\n";
-    std::cout << "Query Size (Online):       "
-              << request.ByteSizeLong() / 1024.0 << " KB\n";
+    std::cout << "Query Size (Online 1st time):       "
+              << request_1.ByteSizeLong() / 1024.0 << " KB(Includes Key)\n";
+
+    std::cout << "Query Size (Online 2nd time):     "
+              << request_2.ByteSizeLong() / 1024.0 << " KB (Optimized!)\n";
+
     std::cout << "Response Size (LWE part):  "
               << lwe_response_size / 1024.0 << " KB\n"; 
     std::cout << "Response Size (RLWE part): "
@@ -107,14 +114,14 @@ void BM_HintlessPirRlwe64(benchmark::State& state) {
   }
 
   for (auto _ : state) {
-    auto response = server->HandleRequest(request);
+    auto response = server->HandleRequest(request_2);
     benchmark::DoNotOptimize(response);
   }
 
   // Sanity check on the correctness of the instantiation.
-  auto response = server->HandleRequest(request).value();
+  auto response = server->HandleRequest(request_2).value();
   std::string record = client->RecoverRecord(response).value();
-  std::string expected = database->Record(1).value();
+  std::string expected = database->Record(2).value();
   ASSERT_EQ(record, expected);
 }
 BENCHMARK(BM_HintlessPirRlwe64);

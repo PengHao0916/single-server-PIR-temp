@@ -295,7 +295,74 @@ absl::StatusOr<LinPirResponse> Server<RlweInteger>::GetResponsePads() const {
   return response_pads;
 }
 
+// ================== 新增的 HandleRequest 实现 ==================
 
+template <typename RlweInteger>
+absl::StatusOr<LinPirResponse> Server<RlweInteger>::HandleRequest(
+    const LinPirRequest& request) const {
+  // 1. Reconstruct the Query Ciphertext (ct_query)
+  if (!request.has_ct_query_b()) {
+    return absl::InvalidArgumentError("Missing ct_query_b in request.");
+  }
+  RLWE_ASSIGN_OR_RETURN(
+      RnsPolynomial ct_query_b,
+      RnsPolynomial::Deserialize(request.ct_query_b(), rns_moduli_));
+  
+  // 使用预计算的 ct_pads_[0] (即 a 分量) 重建完整的 RLWE 密文
+  // 注意：这里利用了 Server 类的成员变量 ct_pads_
+  RnsCiphertext ct_query({std::move(ct_query_b), ct_pads_[0]}, rns_moduli_,
+                         /*power_of_s=*/1, /*error=*/0, &rns_error_params_,
+                         rns_context_);
+
+  // 2. Handle Galois Key (gk) with Session Caching
+  if (request.gk_key_bs_size() > 0) {
+    // 情况 A: 请求中包含了 Key (首次请求 或 无状态模式)
+    std::vector<RnsPolynomial> gk_key_bs;
+    gk_key_bs.reserve(request.gk_key_bs_size());
+    for (const auto& proto_poly : request.gk_key_bs()) {
+      RLWE_ASSIGN_OR_RETURN(
+          RnsPolynomial gk_key_b,
+          RnsPolynomial::Deserialize(proto_poly, rns_moduli_));
+      gk_key_bs.push_back(std::move(gk_key_b));
+    }
+    
+    RLWE_ASSIGN_OR_RETURN(
+        RnsGaloisKey gk,
+        RnsGaloisKey::CreateFromKeyComponents(
+            gk_pads_, std::move(gk_key_bs), /*power=*/5, &rns_gadget_,
+            rns_moduli_, prng_seed_gk_pad_, params_.prng_type));
+
+    if (request.has_client_id()) {
+        // 如果有 client_id，将 Key 存入缓存
+        // 先删除旧的（如果存在），避免潜在的冲突
+        gk_cache_.erase(request.client_id());
+        // 存入新 Key
+        auto insert_result = gk_cache_.emplace(request.client_id(), std::move(gk));
+        // 使用缓存中的 Key 进行计算
+        return HandleRequest(ct_query, insert_result.first->second);
+    } else {
+        // 无状态模式，直接使用生成的 Key
+        return HandleRequest(ct_query, gk);
+    }
+  } else {
+    // 情况 B: 请求中没有 Key (后续请求)，尝试从缓存查找
+    if (!request.has_client_id()) {
+        return absl::InvalidArgumentError("Missing Galois Key and Client ID.");
+    }
+    
+    // 在 gk_cache_ 中查找
+    auto it = gk_cache_.find(request.client_id());
+    if (it == gk_cache_.end()) {
+        return absl::InvalidArgumentError(
+            "Session key not found or expired for client ID: " + request.client_id());
+    }
+    
+    // 使用缓存中的 Key，调用底层的 HandleRequest
+    return HandleRequest(ct_query, it->second);
+  }
+}
+
+// ================== 结束 ==================
 template class Server<Uint32>;
 template class Server<Uint64>;
 

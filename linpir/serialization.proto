@@ -28,6 +28,8 @@ message LinPirRequest {
 
   // The "b" components of the Galois key for homomorphic rotation.
   repeated rlwe.SerializedRnsPolynomial gk_key_bs = 2;
+
+  optional string client_id = 3;
 }
 
 // A LinPIR response sent from the server to the client.

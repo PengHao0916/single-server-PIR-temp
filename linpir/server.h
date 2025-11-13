@@ -20,6 +20,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <map>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -83,9 +84,11 @@ class Server {
   // Process a serialized LinPir request.
   // This variant requires the server and the database are preprocessed.
   absl::StatusOr<LinPirResponse> HandleRequest(
-      const LinPirRequest& request) const {
-    return HandleRequest(request.ct_query_b(), request.gk_key_bs());
-  }
+      const LinPirRequest& request) const;
+      
+  // {
+  //   return HandleRequest(request.ct_query_b(), request.gk_key_bs());
+  // }
 
   // Process a LinPir request represented by individual protos.
   // This variant requires the server and the database are preprocessed.
@@ -144,6 +147,8 @@ class Server {
   std::vector<RnsPolynomial> ct_pads_;
   std::vector<std::vector<RnsPolynomial>> ct_sub_pad_digits_;
   std::vector<RnsPolynomial> gk_pads_;
+
+  mutable std::map<std::string, RnsGaloisKey> gk_cache_;
 };
 
 }  // namespace linpir

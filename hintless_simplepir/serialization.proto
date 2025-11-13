@@ -37,6 +37,7 @@ message HintlessPirServerPublicParams {
   optional bytes prng_seed_linpir_gk_pad = 3;
   //新增字段用于存放hint(a_parts)
   repeated LinPirResponse linpir_response_hints = 4;
+
 }
 
 message HintlessPirRequest {
@@ -47,6 +48,8 @@ message HintlessPirRequest {
 
   // The "b" components of the Galois key for all LinPir requests.
   repeated rlwe.SerializedRnsPolynomial linpir_gk_bs = 3;
+
+  optional string client_id = 4;
 }
 
 message HintlessPirResponse {

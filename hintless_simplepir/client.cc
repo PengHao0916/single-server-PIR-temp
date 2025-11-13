@@ -84,10 +84,36 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
       RlweRnsContext crt_context,
       RlweRnsContext::Create(rlwe_params.log_n, rlwe_params.ts, /*ps=*/{}, 2));
 
-  return absl::WrapUnique(new Client(
-                 params, public_params, // 直接传递 public_params
+  // return absl::WrapUnique(new Client(
+  //                params, public_params, // 直接传递 public_params
+  //                std::move(rlwe_contexts), std::move(rlwe_moduli),
+  //                std::move(linpir_clients), std::move(crt_context)));
+
+  //                auto seed_status = rlwe::SingleThreadHkdfPrng::GenerateSeed();
+  //       if (seed_status.ok()) {
+  //   client->client_id_ = seed_status.value();
+  // } else {
+  //   client->client_id_ = "fallback_client_id_001"; 
+  // }
+  //         return client;
+  auto client = absl::WrapUnique(new Client(
+                 params, public_params,
                  std::move(rlwe_contexts), std::move(rlwe_moduli),
                  std::move(linpir_clients), std::move(crt_context)));
+
+  auto seed_status = rlwe::SingleThreadHkdfPrng::GenerateSeed();
+  if (seed_status.ok()) {
+    client->client_id_ = seed_status.value();
+  } else {
+    client->client_id_ = "fallback_client_id_001"; 
+  }
+  auto sk_seed_status = rlwe::SingleThreadHkdfPrng::GenerateSeed();
+  if (sk_seed_status.ok()) {
+    client->session_linpir_sk_seed_ = sk_seed_status.value();
+  } else {
+    return absl::InternalError("Failed to generate LinPIR secret key seed.");
+  }
+  return client;
 }
 
 //创建LWE密钥s，以及用s加密过后的LWE密文
@@ -157,32 +183,69 @@ absl::StatusOr<HintlessPirRequest> Client::GenerateRequest(int64_t index) {
   return request;
 }
 
+// absl::Status Client::GenerateLinPirRequestInPlace(
+//     HintlessPirRequest& request, const lwe::Vector& lwe_secret) const {
+//   if (linpir_clients_.empty()) {
+//     return absl::InvalidArgumentError("No LinPir client available.");
+//   }
+
+//   // Encode the LWE secret vector using LinPir plaintext moduli, and also
+//   // generate a GaloisKey which is shared by all LinPir requests.
+//   RlweInteger lwe_modulus = RlweInteger{1} << params_.lwe_modulus_bit_size;
+//   for (int k = 0; k < linpir_clients_.size(); ++k) {
+//     RlweInteger plaintext_modulus = rlwe_contexts_[k]->PlaintextModulus();
+//     std::vector<RlweInteger> lwe_secret_mod_t =
+//         EncodeLweVector(lwe_secret, lwe_modulus, plaintext_modulus);
+//     RLWE_ASSIGN_OR_RETURN(
+//         auto ct, linpir_clients_[k]->EncryptQuery(lwe_secret_mod_t,
+//                                                   state_.prng_seed_linpir_sk));
+//     RLWE_ASSIGN_OR_RETURN(auto ct_b, ct.Component(0));
+//     RLWE_ASSIGN_OR_RETURN(*request.add_linpir_ct_bs(),
+//                           ct_b.Serialize(rlwe_moduli_));
+//   }
+//   RLWE_ASSIGN_OR_RETURN(auto gk, linpir_clients_[0]->GenerateGaloisKey(
+//                                      state_.prng_seed_linpir_sk));
+//   for (auto const& gk_b : gk.GetKeyB()) {
+//     RLWE_ASSIGN_OR_RETURN(*request.add_linpir_gk_bs(),
+//                           gk_b.Serialize(rlwe_moduli_));
+//   }
+//   return absl::OkStatus();
+// }
 absl::Status Client::GenerateLinPirRequestInPlace(
     HintlessPirRequest& request, const lwe::Vector& lwe_secret) const {
   if (linpir_clients_.empty()) {
     return absl::InvalidArgumentError("No LinPir client available.");
   }
 
-  // Encode the LWE secret vector using LinPir plaintext moduli, and also
-  // generate a GaloisKey which is shared by all LinPir requests.
+  // 【新增】设置请求的 Client ID
+  request.set_client_id(client_id_);
+
+  // Encode the LWE secret vector using LinPir plaintext moduli...
   RlweInteger lwe_modulus = RlweInteger{1} << params_.lwe_modulus_bit_size;
-  for (int k = 0; k < linpir_clients_.size(); ++k) {
+  for (size_t k = 0; k < linpir_clients_.size(); ++k) {
     RlweInteger plaintext_modulus = rlwe_contexts_[k]->PlaintextModulus();
     std::vector<RlweInteger> lwe_secret_mod_t =
         EncodeLweVector(lwe_secret, lwe_modulus, plaintext_modulus);
     RLWE_ASSIGN_OR_RETURN(
         auto ct, linpir_clients_[k]->EncryptQuery(lwe_secret_mod_t,
-                                                  state_.prng_seed_linpir_sk));
+                                                  session_linpir_sk_seed_));
     RLWE_ASSIGN_OR_RETURN(auto ct_b, ct.Component(0));
     RLWE_ASSIGN_OR_RETURN(*request.add_linpir_ct_bs(),
                           ct_b.Serialize(rlwe_moduli_));
   }
-  RLWE_ASSIGN_OR_RETURN(auto gk, linpir_clients_[0]->GenerateGaloisKey(
-                                     state_.prng_seed_linpir_sk));
-  for (auto const& gk_b : gk.GetKeyB()) {
-    RLWE_ASSIGN_OR_RETURN(*request.add_linpir_gk_bs(),
-                          gk_b.Serialize(rlwe_moduli_));
+
+  // 【新增】会话复用逻辑：仅在第一次请求时发送 Galois Key
+  if (!is_gk_sent_) {
+      RLWE_ASSIGN_OR_RETURN(auto gk, linpir_clients_[0]->GenerateGaloisKey(
+                                         session_linpir_sk_seed_));
+      for (auto const& gk_b : gk.GetKeyB()) {
+        RLWE_ASSIGN_OR_RETURN(*request.add_linpir_gk_bs(),
+                              gk_b.Serialize(rlwe_moduli_));
+      }
+      // 标记已发送，后续请求将跳过此块
+      is_gk_sent_ = true; 
   }
+  
   return absl::OkStatus();
 }
 
