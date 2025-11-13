@@ -179,26 +179,34 @@ absl::Status Server<RlweInteger>::Preprocess() {
 template <typename RlweInteger>
 absl::StatusOr<LinPirResponse> Server<RlweInteger>::HandleRequest(
     const RnsCiphertext& ct_query, const RnsGaloisKey& gk) const {
+  
   // Compute all rotations of the query vector.
   int num_rotations = params_.rows_per_block / 2;
   std::vector<RnsCiphertext> ct_rotated_queries;
   ct_rotated_queries.reserve(num_rotations);
   ct_rotated_queries.push_back(std::move(ct_query));
+  
   for (int i = 1; i < num_rotations; ++i) {
     RLWE_ASSIGN_OR_RETURN(RnsCiphertext ct_sub,
                           ct_rotated_queries[i - 1].Substitute(5));
-    RLWE_ASSIGN_OR_RETURN(RnsCiphertext ct_rot, gk.ApplyTo(ct_sub));
+    
+    // 【修复点 1】使用 ApplyToWithRandomPad 和预计算的 pads
+    RLWE_ASSIGN_OR_RETURN(RnsCiphertext ct_rot,
+                          gk.ApplyToWithRandomPad(
+                              ct_sub, ct_sub_pad_digits_[i - 1], ct_pads_[i]));
     ct_rotated_queries.push_back(std::move(ct_rot));
   }
+
   // Compute inner products with the databases and serialize.
   LinPirResponse response;
   for (auto const& database : databases_) {
     LinPirResponse::EncryptedInnerProduct inner_product;
+    
+    // 【修复点 2】使用 InnerProductWithPreprocessedPads
     RLWE_ASSIGN_OR_RETURN(std::vector<RnsCiphertext> ct_blocks,
-                          database->InnerProductWith(ct_rotated_queries));
+                          database->InnerProductWithPreprocessedPads(ct_rotated_queries));
+                          
     for (auto const& ct : ct_blocks) {
-      //RLWE_ASSIGN_OR_RETURN(*inner_product.add_ct_blocks(), ct.Serialize());
-      //RLWE_ASSIGN_OR_RETURN(*inner_product.add_ct_b_blocks(), ct.Serialize());
       RLWE_ASSIGN_OR_RETURN(RnsPolynomial ct_b, ct.Component(0));
       RLWE_ASSIGN_OR_RETURN(*inner_product.add_ct_b_blocks(),
                         ct_b.Serialize(rns_moduli_));

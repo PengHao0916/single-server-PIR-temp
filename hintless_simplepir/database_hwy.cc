@@ -56,10 +56,10 @@ static inline Database::RawMatrix CreateRandomRawMatrix(size_t num_rows,
       sizeof(internal::BlockType) / sizeof(lwe::PlainInteger);
   size_t num_blocks_per_col = DivAndRoundUp(num_rows, num_values_per_block);
   lwe::Integer mask = (lwe::Integer{1} << plain_bits) - 1;
-  std::cout << "\n[DEBUG-1] Verifying database creation:" << std::endl;
-  std::cout << "  sizeof(lwe::Integer) is: " << sizeof(lwe::Integer) << " bytes (Expected 4 for uint32_t)" << std::endl;
-  std::cout << "  plain_bits (from param) is: " << plain_bits << std::endl;
-  std::cout << "  Calculated mask (1U << 64) - 1 is: " << mask << " (Expected 0 due to overflow)" << std::endl;
+  // std::cout << "\n[DEBUG-1] Verifying database creation:" << std::endl;
+  // std::cout << "  sizeof(lwe::Integer) is: " << sizeof(lwe::Integer) << " bytes (Expected 4 for uint32_t)" << std::endl;
+  // std::cout << "  plain_bits (from param) is: " << plain_bits << std::endl;
+  // std::cout << "  Calculated mask (1U << 64) - 1 is: " << mask << " (Expected 0 due to overflow)" << std::endl;
   Database::RawMatrix matrix(num_cols);
   for (int i = 0; i < num_cols; ++i) {
     matrix[i].resize(num_blocks_per_col, 0);
