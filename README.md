@@ -10,11 +10,11 @@ While the original HintlessPIR eliminates client-side storage, it fundamentally 
 
 1.  **Downlink Optimization (Asymmetric Response Decomposition):**
     * **Mechanism:** Structurally isolates static public components from the response ciphertext and offloads them to an offline phase.
-    * [cite_start]**Impact:** Mathematically guarantees a **50% reduction** in the online response payload[cite: 28, 1167].
+    * **Impact:** Mathematically guarantees a **50% reduction** in the online response payload.
 
 2.  **Uplink Optimization (Session-Based Key Caching):**
     * **Mechanism:** Implements server-side caching for homomorphic evaluation keys, treating them as session-invariant.
-    * [cite_start]**Impact:** Reduces uplink query sizes by up to **74%** for subsequent requests[cite: 30, 1287].
+    * **Impact:** Reduces uplink query sizes by up to **74%** for subsequent requests.
 
 ## 📊 Performance
 
@@ -27,7 +27,7 @@ Our approach establishes a new practical equilibrium between throughput and comm
 | **Query Size (Upload)** | ~365 KB | **~95 KB** | 📉 **-74%** |
 
 ### Throughput
-[cite_start]By eliminating redundant computations of static artifacts, our scheme achieves a **1.17× improvement** in server throughput compared to the baseline[cite: 31, 230].
+By eliminating redundant computations of static artifacts, our scheme achieves a **1.17× improvement** in server throughput compared to the baseline.
 
 ## 🧩 Background: HintlessPIR
 
